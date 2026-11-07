@@ -165,7 +165,7 @@ const DEFAULTS = {
   // focus
   focusDepth: 1, dimOthers: 0.12, flyDistance: 170, flyMs: 1200,
   // satellites
-  satellites: true, satSize: 3.4, satOrbit: 1.0, satSpin: 0.25, satRaw: '#2fa8ff', satExt: '#ff9d1c', satLabels: false,
+  satellites: true, satSize: 6, satOrbit: 1.0, satSpin: 0.25, satRaw: '#2fa8ff', satExt: '#ff9d1c', satLabels: false,
 };
 const PRESETS = {
   Nebula: {},
@@ -178,6 +178,8 @@ const PRESETS = {
 const catColorDefaults = (pal) => Object.fromEntries(catsByCount.map((c, i) => [c, PALETTES[pal][i % 12]]));
 let S = { ...DEFAULTS, catColors: catColorDefaults(DEFAULTS.palette) };
 const saved = store.get('orrery.current', null);
+// A remembered satellite size that is an old default (2.2 in v1, 3.4 in v2-v3) was never chosen: take the new one.
+if (saved && [2.2, 3.4].includes(saved.satSize)) delete saved.satSize;
 if (saved) S = { ...S, ...saved, catColors: { ...S.catColors, ...(saved.catColors || {}) } };
 const hiddenCats = new Set(store.get('orrery.hiddenCats', []));
 
@@ -390,17 +392,18 @@ function applyLayout(reheat = true) {
 // satellites
 const satGroup = new THREE.Group(); scene.add(satGroup); let satMeshes = [];
 const satGeo = new THREE.OctahedronGeometry(1, 0);
+function satOrbitRadius(n) { return (n._r || 6) * 2.4 + 10 + Math.sqrt(n.sources.length) * Math.max(3.2, S.satSize * 1.1) * S.satOrbit; }
 function buildSatellites() {
   for (const o of satGroup.children) if (o.isCSS2DObject) o.element.remove();
   satGroup.clear(); satMeshes = [];
   if (!S.satellites || !selected) return;
   const list = selected.sources, N = list.length; if (!N) return;
-  const R = (selected._r || 6) * 2.4 + 10 + Math.sqrt(N) * 3.2 * S.satOrbit;
+  const R = satOrbitRadius(selected);
   const ga = Math.PI * (3 - Math.sqrt(5));
   list.forEach((s, i) => {
     const y = N === 1 ? 0 : 1 - (i / (N - 1)) * 2, rr = Math.sqrt(1 - y * y), th = ga * i;
     const sc = s.ext ? S.satExt : S.satRaw;
-    const m = new THREE.Mesh(satGeo, new THREE.MeshBasicMaterial({ color: sc }));
+    const m = new THREE.Mesh(satGeo, new THREE.MeshPhongMaterial({ color: sc, emissive: sc, emissiveIntensity: 0.3, shininess: 90, flatShading: true }));
     m.scale.setScalar(S.satSize); m.position.set(Math.cos(th) * rr * R, y * R, Math.sin(th) * rr * R); m.userData.src = s;
     satGroup.add(m); satMeshes.push(m);
     if (S.satLabels) { const ls = labelSprite(s.path.split('/').pop(), s.ext ? S.satExt : S.satRaw, 0.8, 'sat'); labelObjs.pop(); ls.position.copy(m.position); satGroup.add(ls); }
@@ -429,7 +432,9 @@ function select(n, fly = false) {
   if (n && fly) flyTo(n);
 }
 function flyTo(n) {
-  const d = S.flyDistance + (n._r || 6) * 3; const len = Math.hypot(n.x, n.y, n.z) || 1; const k = 1 + d / len;
+  // stand outside the satellite shell, or the near satellites fill the screen
+  const shell = S.satellites && n.sources.length ? satOrbitRadius(n) * 2.8 : 0;
+  const d = Math.max(S.flyDistance + (n._r || 6) * 3, shell); const len = Math.hypot(n.x, n.y, n.z) || 1; const k = 1 + d / len;
   Graph.cameraPosition({ x: n.x * k, y: n.y * k, z: n.z * k }, n, S.flyMs);
 }
 function dotHtml(n) { return `<span class="dot" style="background:${nodeColor(n)}"></span>`; }
@@ -614,7 +619,7 @@ fF.add({ fit() { Graph.zoomToFit(800, 40); } }, 'fit').name('Zoom to fit all');
 
 const fS = gui.addFolder('Satellites (sources)');
 fS.add(S, 'satellites').name('Show on selected page').onChange(satCh);
-fS.add(S, 'satSize', 0.3, 8, 0.1).name('Satellite size').onChange(satCh);
+fS.add(S, 'satSize', 0.3, 15, 0.1).name('Satellite size').onChange(satCh);
 fS.add(S, 'satOrbit', 0.3, 4, 0.05).name('Orbit distance').onChange(satCh);
 fS.add(S, 'satSpin', 0, 2, 0.01).name('Spin').onChange(persist);
 fS.addColor(S, 'satRaw').name('Raw source colour').onChange(satCh);
