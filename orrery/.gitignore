@@ -1,0 +1,6 @@
+# Wiki content never goes in this repo: it is a public fork.
+graph.json
+data.json
+orrery.html
+serve/
+*.png

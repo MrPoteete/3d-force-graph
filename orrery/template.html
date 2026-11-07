@@ -1,0 +1,646 @@
+<title>Second Brain Orrery</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Unbounded:wght@500&display=swap">
+<style>
+/* Layout: one full-bleed 3D canvas; floating instrument panels (dials left, reader right, search top). Single dark world. */
+:root {
+  --ink: #e6e9f2;
+  --ink-dim: #9aa3b8;
+  --panel: rgba(14, 17, 28, 0.86);
+  --panel-solid: #0e111c;
+  --line: rgba(160, 176, 220, 0.18);
+  --accent: #8fb8ff;
+  --warn: #ff7a6b;
+  --f-display: "Unbounded", "Instrument Sans", system-ui, sans-serif;
+  --f-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: #05060b; color: var(--ink); font-family: var(--f-body); overflow: hidden; }
+#stage { position: fixed; inset: 0; }
+.chrome { position: fixed; z-index: 5; }
+#brand {
+  top: calc(env(safe-area-inset-top, 0px) + 14px); left: max(16px, env(safe-area-inset-left, 0px));
+  font-family: var(--f-display); font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink);
+  pointer-events: none; text-shadow: 0 1px 8px rgba(0,0,0,.8);
+}
+#brand small { display: block; font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.02em; text-transform: none; color: var(--ink-dim); margin-top: 4px; }
+#searchWrap { top: calc(env(safe-area-inset-top, 0px) + 12px); left: 50%; transform: translateX(-50%); width: min(380px, calc(100vw - 32px)); }
+#search {
+  width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--ink); font: 14px var(--f-body); backdrop-filter: blur(8px);
+}
+#search:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#suggest { margin: 4px 0 0; padding: 4px; list-style: none; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 8px; max-height: 50vh; overflow-y: auto; }
+#suggest li { padding: 6px 8px; border-radius: 5px; cursor: pointer; display: flex; gap: 8px; align-items: center; font-size: 13.5px; }
+#suggest li[aria-selected="true"], #suggest li:hover { background: rgba(143,184,255,.14); }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+/* lil-gui sits top-right */
+.lil-gui.root { top: calc(env(safe-area-inset-top, 0px) + 12px) !important; right: max(12px, env(safe-area-inset-right, 0px)) !important; max-height: calc(100% - 24px - env(safe-area-inset-top, 0px)); overflow-y: auto;
+  --background-color: rgba(14,17,28,.92); --widget-color: #232a3d; --hover-color: #2d3550; --focus-color: #36406a; --number-color: #9fd0ff; --string-color: #c8e6a0; --font-family: var(--f-body); --font-family-mono: var(--f-mono); --title-background-color: #161b2b; --width: 300px; }
+#reader {
+  left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  width: min(380px, calc(100vw - 32px)); max-height: min(70vh, calc(100% - 120px)); overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(10px);
+  padding: 16px 18px; box-sizing: border-box; display: grid; gap: 12px;
+}
+#reader h2 { margin: 0; font-family: var(--f-display); font-weight: 500; font-size: 17px; line-height: 1.3; text-wrap: balance; padding-right: 28px; }
+#reader .meta { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font: 11.5px var(--f-mono); color: var(--ink-dim); }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--ink); font: 11.5px var(--f-mono); }
+.chip.warn { border-color: rgba(255,122,107,.5); color: var(--warn); }
+#reader p.sum { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ink); }
+#reader h3 { margin: 4px 0 0; font: 600 10.5px var(--f-body); letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-dim); }
+#reader ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+#reader li button { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: flex; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 5px; font-size: 13.5px; }
+#reader li button:hover, #reader li button:focus-visible { background: rgba(143,184,255,.12); }
+#reader li.src { font: 11.5px var(--f-mono); color: var(--ink-dim); padding: 2px 6px; overflow-wrap: anywhere; display: flex; gap: 8px; align-items: baseline; }
+.row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.btn { all: unset; cursor: pointer; padding: 5px 10px; border-radius: 6px; border: 1px solid var(--line); font: 500 12.5px var(--f-body); color: var(--ink); }
+.btn:hover, .btn:focus-visible { background: rgba(143,184,255,.12); }
+.btn[aria-pressed="true"] { background: rgba(143,184,255,.22); border-color: var(--accent); }
+#closeReader { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; display: grid; place-items: center; padding: 0; font-size: 16px; }
+.lbl { font: 500 12.5px var(--f-body); white-space: nowrap; text-shadow: 0 0 4px #000, 0 1px 3px #000, 0 0 10px rgba(0,0,0,.8); pointer-events: none; letter-spacing: .01em; }
+.lbl.sel { font-weight: 600; }
+.lbl.sat { font-family: var(--f-mono); opacity: .9; }
+#tip { position: fixed; z-index: 6; pointer-events: none; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font: 11.5px var(--f-mono); color: var(--ink); max-width: 320px; overflow-wrap: anywhere; }
+.scene-tooltip { font-family: var(--f-body) !important; font-size: 13px !important; background: rgba(14,17,28,.9); padding: 4px 8px; border-radius: 6px; border: 1px solid var(--line); }
+#modal { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.55); display: grid; place-items: center; padding: 16px; }
+#modal .box { width: min(520px, 100%); background: var(--panel-solid); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 10px; }
+#modal h3 { margin: 0; font-family: var(--f-display); font-weight: 500; font-size: 15px; }
+#modal p { margin: 0; font-size: 13px; color: var(--ink-dim); line-height: 1.5; }
+#modal textarea { width: 100%; box-sizing: border-box; height: 180px; background: #070910; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; font: 11.5px var(--f-mono); padding: 8px; }
+#toast { position: fixed; z-index: 21; left: 50%; transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); background: var(--panel-solid); border: 1px solid var(--accent); border-radius: 8px; padding: 8px 14px; font-size: 13px; }
+#loading { position: fixed; inset: 0; display: grid; place-items: center; font: 13px var(--f-mono); color: var(--ink-dim); }
+@media (max-width: 640px) {
+  .lil-gui.root { --width: calc(100vw - 32px); left: max(16px, env(safe-area-inset-left, 0px)) !important; right: auto !important; max-height: 70vh; }
+  #brand { display: none; }
+  #searchWrap { top: calc(env(safe-area-inset-top, 0px) + 54px); }
+  #reader { max-height: 45vh; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div id="stage" aria-label="3D map of the second-brain wiki"></div>
+<div id="loading">Loading the orrery…</div>
+<div id="brand" class="chrome">Second Brain Orrery<small id="stats"></small></div>
+<div id="searchWrap" class="chrome">
+  <label for="search" class="sr" style="position:absolute;left:-9999px">Find a page</label>
+  <input id="search" type="search" placeholder="Find a page…" autocomplete="off" spellcheck="false">
+  <ul id="suggest" role="listbox" hidden></ul>
+</div>
+<aside id="reader" class="chrome" hidden aria-live="polite">
+  <button id="closeReader" class="btn" aria-label="Close">×</button>
+  <div id="readerBody"></div>
+</aside>
+<div id="tip" hidden></div>
+<div id="toast" hidden></div>
+<div id="modal" hidden>
+  <div class="box">
+    <h3 id="modalTitle">Paste a look</h3>
+    <p id="modalText">Paste look text you copied earlier, then press Apply.</p>
+    <textarea id="modalArea" spellcheck="false"></textarea>
+    <div class="row"><button class="btn" id="modalOk">Apply</button><button class="btn" id="modalCancel">Cancel</button></div>
+  </div>
+</div>
+
+<script type="application/json" id="wiki-data">__DATA__</script>
+<script src="https://cdn.jsdelivr.net/npm/lil-gui@0.20.0/dist/lil-gui.umd.min.js"></script>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.1/+esm';
+import { UnrealBloomPass } from 'https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/postprocessing/UnrealBloomPass.js/+esm';
+import { CSS2DRenderer, CSS2DObject } from 'https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/renderers/CSS2DRenderer.js/+esm';
+import ForceGraph3D from 'https://cdn.jsdelivr.net/npm/3d-force-graph@1.80.1/+esm';
+
+const RAW = JSON.parse(document.getElementById('wiki-data').textContent);
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
+};
+
+// ---------- data ----------
+const nodes = RAW.pages.map(p => ({
+  id: p.id, title: p.t, cat: p.c, domain: (p.d && p.d[0]) || 'none', summary: p.s, updated: p.u, bytes: p.b,
+  sys: p.sys, hub: p.r === 'star', flags: p.f || [], gx: p.x, gy: p.y, gz: p.z, x: p.x, y: p.y, z: p.z,
+  sources: p.src.map(([path, ext]) => ({ path, ext: !!ext })),
+}));
+const byId = new Map(nodes.map(n => [n.id, n]));
+const links = RAW.links.map(([s, t]) => ({ source: s, target: t }));
+const outN = new Map(), inN = new Map();
+nodes.forEach(n => { outN.set(n.id, new Set()); inN.set(n.id, new Set()); });
+links.forEach(l => { outN.get(l.source).add(l.target); inN.get(l.target).add(l.source); });
+nodes.forEach(n => { n.nIn = inN.get(n.id).size; n.nOut = outN.get(n.id).size; n.nAll = new Set([...inN.get(n.id), ...outN.get(n.id)]).size; });
+const genT = Date.parse(RAW.gen);
+nodes.forEach(n => { n.ageDays = Math.max(0, (genT - Date.parse(n.updated + 'T00:00:00Z')) / 864e5) || 0; });
+const catsByCount = [...nodes.reduce((m, n) => m.set(n.cat, (m.get(n.cat) || 0) + 1), new Map())].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+const domainsByCount = [...nodes.reduce((m, n) => m.set(n.domain, (m.get(n.domain) || 0) + 1), new Map())].sort((a, b) => b[1] - a[1]).map(e => e[0]);
+$('stats').textContent = `${nodes.length} pages · ${links.length} links · exported ${RAW.gen.slice(0, 10)}`;
+
+const PALETTES = {
+  Vivid:  ['#4cc9f0','#f72585','#ffd166','#06d6a0','#b388ff','#ff8c42','#90e0ef','#ef476f','#c5f277','#f4a261','#a0c4ff','#ffadad'],
+  Pastel: ['#a3c4f3','#ffb5c2','#fde4a5','#b9e8c8','#cdb4db','#ffcfa8','#bde0fe','#f1c0e8','#d8f3a6','#e9c8a6','#c6d8ff','#ffd6d6'],
+  Neon:   ['#00f0ff','#ff2bd6','#fff200','#39ff14','#bf5bff','#ff7b00','#00ffa3','#ff3860','#d4ff00','#ffb000','#5c9dff','#ff6ec7'],
+  Ember:  ['#ffb347','#ff6f59','#ffd27f','#e85d75','#f7a072','#c9485b','#ffe3a3','#ff9a8b','#d6a2ad','#f2c57c','#b5838d','#ffcdb2'],
+  Ice:    ['#cfe8ff','#8fb8ff','#5ad1e6','#b7f0ff','#7f9cf5','#a5f3fc','#dbeafe','#67e8f9','#93c5fd','#c7d2fe','#e0f2fe','#a7f3d0'],
+};
+
+// ---------- settings ----------
+const DEFAULTS = {
+  // nodes
+  shape: 'Sphere', material: 'Glossy', sizeBy: 'Links (all)', sizeScale: 1.0, sizeMin: 2.5, sizeMax: 14,
+  colorBy: 'Category', palette: 'Vivid', recentColor: '#7df9ff', oldColor: '#3a4466', recencyDays: 60,
+  nodeOpacity: 1.0, nodeGlow: true, glowSize: 3.0, glowStrength: 0.38, hubsShine: true, healthRings: true,
+  // labels
+  labels: 'Hubs + focus', labelTop: 12, labelSize: 1.0, labelColor: '#e8ecff',
+  // links
+  linkWidth: 0.35, linkOpacity: 0.28, linkColorMode: 'Source colour', linkColor: '#7d8bb5', linkCurve: 0.12,
+  linkArrows: false, linkVisibility: 'All', particles: 'Focus only', particleCount: 3, particleSpeed: 0.006, particleSize: 1.6,
+  // mood
+  background: '#04050b', bloom: 0.75, bloomRadius: 0.4, bloomThreshold: 0.42, fog: 0.0005, stars: true, starCount: 2500, starSize: 1.4,
+  ambient: 2.6, autoRotate: false, rotateSpeed: 0.4,
+  // layout
+  layout: 'Force', charge: -60, linkDistance: 38, clusterPull: 0.25, centerPull: 0.02, galaxySpread: 1.0,
+  // focus
+  focusDepth: 1, dimOthers: 0.12, flyDistance: 170, flyMs: 1200,
+  // satellites
+  satellites: true, satSize: 3.4, satOrbit: 1.0, satSpin: 0.25, satRaw: '#2fa8ff', satExt: '#ff9d1c', satLabels: false,
+};
+const PRESETS = {
+  Nebula: {},
+  Blueprint: { background: '#0b1d3a', palette: 'Ice', material: 'Wireframe', shape: 'Icosahedron', nodeGlow: false, bloom: 0.25, linkColorMode: 'Fixed', linkColor: '#cfe8ff', linkOpacity: 0.35, linkWidth: 0, linkCurve: 0, stars: false, fog: 0, labelColor: '#ffffff', labels: 'Hubs + focus' },
+  Neural: { background: '#000000', palette: 'Neon', material: 'Glow', nodeGlow: true, glowSize: 4, glowStrength: 0.7, bloom: 1.4, bloomRadius: 0.7, linkColorMode: 'Source colour', linkOpacity: 0.18, linkCurve: 0.3, particles: 'All', particleCount: 1, particleSpeed: 0.004, stars: false },
+  Embers: { background: '#120806', palette: 'Ember', material: 'Matte', bloom: 1.1, linkColorMode: 'Fixed', linkColor: '#ff9a6b', linkOpacity: 0.16, stars: true, starCount: 1200, fog: 0.0016 },
+  Paper: { background: '#f2efe6', palette: 'Vivid', material: 'Matte', nodeGlow: false, bloom: 0, linkColorMode: 'Fixed', linkColor: '#4a4f63', linkOpacity: 0.3, stars: false, fog: 0, labelColor: '#1d2030', ambient: 3.6 },
+  Quiet: { linkVisibility: 'Focus only', labels: 'Focus only', bloom: 0.6, particles: 'Off', sizeBy: 'Flat', sizeMin: 4, stars: true },
+};
+const catColorDefaults = (pal) => Object.fromEntries(catsByCount.map((c, i) => [c, PALETTES[pal][i % 12]]));
+let S = { ...DEFAULTS, catColors: catColorDefaults(DEFAULTS.palette) };
+const saved = store.get('orrery.current', null);
+if (saved) S = { ...S, ...saved, catColors: { ...S.catColors, ...(saved.catColors || {}) } };
+const hiddenCats = new Set(store.get('orrery.hiddenCats', []));
+
+// ---------- helpers ----------
+const col = new THREE.Color();
+function nodeColor(n) {
+  if (S.colorBy === 'Category') return S.catColors[n.cat] || '#cccccc';
+  const pal = PALETTES[S.palette];
+  if (S.colorBy === 'Cluster') return pal[(n.sys ?? 0) % 12];
+  if (S.colorBy === 'Domain') return pal[domainsByCount.indexOf(n.domain) % 12];
+  const t = Math.min(1, n.ageDays / Math.max(1, S.recencyDays));
+  return '#' + new THREE.Color(S.recentColor).lerp(new THREE.Color(S.oldColor), t).getHexString();
+}
+function sizeMetric(n) {
+  switch (S.sizeBy) {
+    case 'Links (all)': return n.nAll;
+    case 'Linked from': return n.nIn;
+    case 'Sources': return n.sources.length;
+    case 'Page length': return n.bytes / 1000;
+    default: return null;
+  }
+}
+const metricMax = () => Math.max(1, ...nodes.map(n => sizeMetric(n) ?? 0));
+let MMAX = 1;
+function radius(n) {
+  const m = sizeMetric(n);
+  const r = m === null ? S.sizeMin : S.sizeMin + (S.sizeMax - S.sizeMin) * Math.sqrt(m / MMAX);
+  return r * S.sizeScale;
+}
+const GEOS = {
+  Sphere: new THREE.SphereGeometry(1, 28, 18), Icosahedron: new THREE.IcosahedronGeometry(1, 0),
+  Crystal: new THREE.OctahedronGeometry(1, 0), Cube: new THREE.BoxGeometry(1.4, 1.4, 1.4), Dodecahedron: new THREE.DodecahedronGeometry(1, 0),
+  Ring: new THREE.TorusGeometry(0.85, 0.28, 12, 32),
+};
+const ringGeo = new THREE.TorusGeometry(1, 0.06, 8, 48);
+const glowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.18, 'rgba(255,255,255,.55)'); gr.addColorStop(0.5, 'rgba(255,255,255,.12)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
+let labelObjs = [];
+// A rebuilt scene can keep old label objects alive for a frame; point them at one shared empty div so their text cannot linger.
+const deadLabel = document.createElement('div');
+function clearLabels() { for (const o of labelObjs) { o.element.remove(); o.element = deadLabel; } labelObjs = []; }
+function labelSprite(text, color, scale, cls = '') {
+  const el = document.createElement('div');
+  el.className = 'lbl ' + cls; el.textContent = text;
+  el.style.color = color; el.style.fontSize = (12.5 * scale).toFixed(1) + 'px';
+  const o = new CSS2DObject(el); o.center.set(0.5, 1.15); labelObjs.push(o);
+  return o;
+}
+function makeMaterial(color, opacity) {
+  const transparent = opacity < 1;
+  switch (S.material) {
+    case 'Matte': return new THREE.MeshLambertMaterial({ color, transparent, opacity });
+    case 'Glow': return new THREE.MeshBasicMaterial({ color, transparent, opacity });
+    case 'Wireframe': return new THREE.MeshBasicMaterial({ color, wireframe: true, transparent, opacity });
+    default: return new THREE.MeshStandardMaterial({ color, roughness: 0.32, metalness: 0.15, emissive: color, emissiveIntensity: 0.18, transparent, opacity });
+  }
+}
+
+// ---------- selection state ----------
+let selected = null; const focusSet = new Set(); const focusLinks = new Set();
+function computeFocus() {
+  focusSet.clear(); focusLinks.clear();
+  if (!selected) return;
+  let frontier = [selected.id]; focusSet.add(selected.id);
+  for (let d = 0; d < S.focusDepth; d++) {
+    const next = [];
+    for (const id of frontier) for (const nb of [...outN.get(id), ...inN.get(id)]) if (!focusSet.has(nb)) { focusSet.add(nb); next.push(nb); }
+    frontier = next;
+  }
+  for (const l of links) { const s = l.source.id ?? l.source, t = l.target.id ?? l.target; if (focusSet.has(s) && focusSet.has(t)) focusLinks.add(l); }
+}
+const isVisibleNode = (n) => !hiddenCats.has(n.cat);
+const topLabelIds = () => new Set([...nodes].sort((a, b) => b.nAll - a.nAll).slice(0, S.labelTop).map(n => n.id));
+let TOP = new Set();
+function showLabel(n) {
+  switch (S.labels) {
+    case 'Off': return false;
+    case 'All': return true;
+    case 'Focus only': return focusSet.has(n.id);
+    default: return TOP.has(n.id) || focusSet.has(n.id);
+  }
+}
+
+// ---------- node objects ----------
+function buildNode(n) {
+  const grp = new THREE.Group();
+  const r = radius(n); n._r = r;
+  const dim = selected && !focusSet.has(n.id);
+  const op = (dim ? S.dimOthers : 1) * S.nodeOpacity;
+  const c = nodeColor(n);
+  const mesh = new THREE.Mesh(GEOS[S.shape] || GEOS.Sphere, makeMaterial(c, op));
+  mesh.scale.setScalar(r); grp.add(mesh);
+  if (S.nodeGlow && op > 0.05) {
+    const strength = S.glowStrength * (S.hubsShine && n.hub ? 1.35 : 1) * (dim ? S.dimOthers : 1);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: c, transparent: true, opacity: Math.min(1, strength), blending: THREE.AdditiveBlending, depthWrite: false }));
+    const gs = r * S.glowSize * (S.hubsShine && n.hub ? 1.2 : 1); sp.scale.set(gs, gs, 1); grp.add(sp);
+  }
+  if (S.healthRings && n.flags.length) {
+    const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: '#ff6b5b', transparent: true, opacity: dim ? 0.15 : 0.85 }));
+    ring.scale.setScalar(r * 1.6); ring.rotation.x = Math.PI / 2.4; grp.add(ring);
+  }
+  if (n === selected) {
+    const sel = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.9 }));
+    sel.scale.setScalar(r * 2.1); sel.userData.spin = true; grp.add(sel); selRing = sel;
+  }
+  if (showLabel(n) && !dim) {
+    const ls = labelSprite(n.title, S.labelColor, S.labelSize * (n === selected ? 1.25 : 1), n === selected ? 'sel' : '');
+    ls.position.set(0, -r, 0); grp.add(ls);
+  }
+  return grp;
+}
+let selRing = null;
+
+// ---------- graph ----------
+const stage = $('stage');
+const cssRenderer = new CSS2DRenderer();
+cssRenderer.domElement.style.pointerEvents = 'none';
+const Graph = new ForceGraph3D(stage, { controlType: 'orbit', extraRenderers: [cssRenderer] })
+  .showNavInfo(false)
+  .nodeId('id')
+  .nodeLabel(n => `<b>${escapeHtml(n.title)}</b><br><span style="opacity:.7">${n.cat} · ${n.nAll} links</span>`)
+  .nodeThreeObject(buildNode)
+  .nodeVisibility(isVisibleNode)
+  .linkVisibility(l => isVisibleNode(l.source) && isVisibleNode(l.target) && (S.linkVisibility === 'All' || (S.linkVisibility === 'Focus only' && focusLinks.has(l))))
+  .onNodeClick(n => select(n, true))
+  .onBackgroundClick(() => select(null))
+  .onNodeHover(n => { stage.style.cursor = n ? 'pointer' : ''; })
+  .enableNodeDrag(true);
+
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function rgba(hex, a) { col.set(hex); return `rgba(${Math.round(col.r * 255)},${Math.round(col.g * 255)},${Math.round(col.b * 255)},${a})`; }
+
+function applyLinks() {
+  Graph
+    .linkOpacity(1)
+    .linkWidth(l => (focusLinks.has(l) ? Math.max(S.linkWidth * 1.8, 0.5) : S.linkWidth))
+    .linkCurvature(S.linkCurve)
+    .linkColor(l => {
+      const base = S.linkColorMode === 'Fixed' ? S.linkColor : nodeColor(l.source);
+      if (selected) return focusLinks.has(l) ? rgba(base, Math.min(0.85, S.linkOpacity * 2 + 0.15)) : rgba(base, S.linkOpacity * S.dimOthers);
+      return rgba(base, S.linkOpacity);
+    })
+    .linkDirectionalArrowLength(S.linkArrows ? 3.5 : 0).linkDirectionalArrowRelPos(1)
+    .linkDirectionalArrowColor(l => S.linkColorMode === 'Fixed' ? S.linkColor : nodeColor(l.source))
+    .linkDirectionalParticles(l => S.particles === 'All' ? S.particleCount : (S.particles === 'Focus only' && focusLinks.has(l) ? S.particleCount : 0))
+    .linkDirectionalParticleSpeed(S.particleSpeed)
+    .linkDirectionalParticleWidth(S.particleSize)
+    .linkDirectionalParticleColor(l => nodeColor(l.source))
+    .linkVisibility(Graph.linkVisibility());
+}
+function applyNodes() { MMAX = metricMax(); TOP = topLabelIds(); selRing = null; clearLabels(); Graph.nodeThreeObject(buildNode); }
+
+// mood
+const scene = Graph.scene();
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), S.bloom, S.bloomRadius, S.bloomThreshold);
+Graph.postProcessingComposer().addPass(bloom);
+let starfield = null;
+function applyMood() {
+  Graph.backgroundColor(S.background);
+  bloom.enabled = S.bloom > 0; bloom.strength = S.bloom; bloom.radius = S.bloomRadius; bloom.threshold = S.bloomThreshold;
+  // Paint the background as part of the scene, not as the renderer's clear colour. three.js converts a clear colour
+  // for whichever surface is bound when it is set; the bloom pass re-sets it each frame while the screen is bound, so
+  // the off-screen buffer was cleared with screen-encoded values and encoded again on output (#04050b showed as ~#22263b),
+  // and any frame that set it while the buffer was bound came out dark instead.
+  scene.background = new THREE.Color(S.background);
+  scene.fog = S.fog > 0 ? new THREE.FogExp2(S.background, S.fog) : null;
+  if (starfield) { scene.remove(starfield); starfield.geometry.dispose(); starfield = null; }
+  if (S.stars) {
+    const pos = new Float32Array(S.starCount * 3);
+    for (let i = 0; i < S.starCount; i++) {
+      const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, rr = 1400 + Math.random() * 2200, q = Math.sqrt(1 - u * u);
+      pos.set([rr * q * Math.cos(th), rr * u, rr * q * Math.sin(th)], i * 3);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    starfield = new THREE.Points(g, new THREE.PointsMaterial({ size: S.starSize, color: '#aab6dd', sizeAttenuation: false, transparent: true, opacity: 0.55, fog: false }));
+    scene.add(starfield);
+  }
+  const lights = (Graph.lights && Graph.lights()) || [];
+  lights.forEach(l => { if (l.isAmbientLight) l.intensity = S.ambient; if (l.isDirectionalLight) l.intensity = S.ambient * 0.9; });
+  const ctl = Graph.controls(); ctl.autoRotate = S.autoRotate; ctl.autoRotateSpeed = S.rotateSpeed;
+  document.body.style.background = S.background;
+}
+
+// layout
+let clusterNodes = [];
+function clusterForce(alpha) {
+  if (!S.clusterPull) return;
+  const cent = new Map();
+  for (const n of clusterNodes) { const c = cent.get(n.sys) || { x: 0, y: 0, z: 0, k: 0 }; c.x += n.x; c.y += n.y; c.z += n.z; c.k++; cent.set(n.sys, c); }
+  const k = S.clusterPull * alpha * 0.3;
+  for (const n of clusterNodes) { const c = cent.get(n.sys); n.vx += (c.x / c.k - n.x) * k; n.vy += (c.y / c.k - n.y) * k; n.vz += (c.z / c.k - n.z) * k; }
+}
+clusterForce.initialize = (ns) => { clusterNodes = ns; };
+function centerForce(alpha) { const k = S.centerPull * alpha; for (const n of clusterNodes) { n.vx -= n.x * k; n.vy -= n.y * k; n.vz -= n.z * k; } }
+centerForce.initialize = () => {};
+function applyLayout(reheat = true) {
+  Graph.d3Force('charge').strength(S.charge);
+  Graph.d3Force('link').distance(S.linkDistance);
+  Graph.d3Force('cluster', clusterForce); Graph.d3Force('gravity', centerForce);
+  if (S.layout === 'Galaxy (fixed)') {
+    nodes.forEach(n => { n.fx = n.gx * S.galaxySpread; n.fy = n.gy * S.galaxySpread; n.fz = n.gz * S.galaxySpread; });
+  } else nodes.forEach(n => { n.fx = n.fy = n.fz = undefined; });
+  if (reheat) Graph.d3ReheatSimulation();
+}
+
+// satellites
+const satGroup = new THREE.Group(); scene.add(satGroup); let satMeshes = [];
+const satGeo = new THREE.OctahedronGeometry(1, 0);
+function buildSatellites() {
+  for (const o of satGroup.children) if (o.isCSS2DObject) o.element.remove();
+  satGroup.clear(); satMeshes = [];
+  if (!S.satellites || !selected) return;
+  const list = selected.sources, N = list.length; if (!N) return;
+  const R = (selected._r || 6) * 2.4 + 10 + Math.sqrt(N) * 3.2 * S.satOrbit;
+  const ga = Math.PI * (3 - Math.sqrt(5));
+  list.forEach((s, i) => {
+    const y = N === 1 ? 0 : 1 - (i / (N - 1)) * 2, rr = Math.sqrt(1 - y * y), th = ga * i;
+    const sc = s.ext ? S.satExt : S.satRaw;
+    const m = new THREE.Mesh(satGeo, new THREE.MeshBasicMaterial({ color: sc }));
+    m.scale.setScalar(S.satSize); m.position.set(Math.cos(th) * rr * R, y * R, Math.sin(th) * rr * R); m.userData.src = s;
+    satGroup.add(m); satMeshes.push(m);
+    if (S.satLabels) { const ls = labelSprite(s.path.split('/').pop(), s.ext ? S.satExt : S.satRaw, 0.8, 'sat'); labelObjs.pop(); ls.position.copy(m.position); satGroup.add(ls); }
+  });
+}
+const raycaster = new THREE.Raycaster(); const ptr = new THREE.Vector2(); const tip = $('tip');
+stage.addEventListener('pointermove', (e) => {
+  if (!satMeshes.length) { tip.hidden = true; return; }
+  const r = stage.getBoundingClientRect(); ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ptr, Graph.camera());
+  const hit = raycaster.intersectObjects(satMeshes, false)[0];
+  if (hit) { const s = hit.object.userData.src; tip.textContent = (s.ext ? 'external · ' : 'raw · ') + s.path; tip.style.left = (e.clientX + 14) + 'px'; tip.style.top = (e.clientY + 12) + 'px'; tip.hidden = false; }
+  else tip.hidden = true;
+});
+let last = performance.now();
+(function tick(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (selected) { satGroup.position.set(selected.x || 0, selected.y || 0, selected.z || 0); satGroup.rotation.y += dt * S.satSpin; }
+  if (selRing) { selRing.rotation.z += dt * 0.8; }
+  requestAnimationFrame(tick);
+})(performance.now());
+
+// ---------- selection + reader ----------
+function select(n, fly = false) {
+  selected = n; computeFocus(); applyNodes(); applyLinks(); buildSatellites(); renderReader();
+  if (n && fly) flyTo(n);
+}
+function flyTo(n) {
+  const d = S.flyDistance + (n._r || 6) * 3; const len = Math.hypot(n.x, n.y, n.z) || 1; const k = 1 + d / len;
+  Graph.cameraPosition({ x: n.x * k, y: n.y * k, z: n.z * k }, n, S.flyMs);
+}
+function dotHtml(n) { return `<span class="dot" style="background:${nodeColor(n)}"></span>`; }
+function listHtml(ids) {
+  return [...ids].map(id => byId.get(id)).sort((a, b) => a.title.localeCompare(b.title))
+    .map(m => `<li><button data-id="${escapeHtml(m.id)}">${dotHtml(m)}<span>${escapeHtml(m.title)}</span></button></li>`).join('');
+}
+function renderReader() {
+  const box = $('reader');
+  if (!selected) { box.hidden = true; return; }
+  const n = selected, outs = outN.get(n.id), ins = inN.get(n.id);
+  const raw = n.sources.filter(s => !s.ext).length, ext = n.sources.length - raw;
+  $('readerBody').innerHTML = `
+    <h2>${escapeHtml(n.title)}</h2>
+    <div class="meta"><span class="chip">${dotHtml(n)}${escapeHtml(n.cat)}</span><span>updated ${escapeHtml(n.updated)}</span><span>${(n.bytes / 1000).toFixed(1)} KB</span>
+      ${n.flags.map(f => `<span class="chip warn">${escapeHtml(f)}</span>`).join('')}</div>
+    ${n.summary ? `<p class="sum">${escapeHtml(n.summary)}</p>` : ''}
+    <div class="row"><span style="font-size:12px;color:var(--ink-dim)">Show neighbours</span>
+      ${[1, 2, 3].map(d => `<button class="btn depth" data-d="${d}" aria-pressed="${S.focusDepth === d}">${d} hop${d > 1 ? 's' : ''}</button>`).join('')}
+      <button class="btn" id="copyPath">Copy path</button></div>
+    <h3>Links to · ${outs.size}</h3><ul>${listHtml(outs) || '<li class="src">none</li>'}</ul>
+    <h3>Linked from · ${ins.size}</h3><ul>${listHtml(ins) || '<li class="src">none</li>'}</ul>
+    <h3>Sources · ${raw} raw, ${ext} external</h3><ul>${n.sources.slice(0, 60).map(s => `<li class="src"><span class="dot" style="background:${s.ext ? S.satExt : S.satRaw}"></span>${escapeHtml(s.path)}</li>`).join('')}${n.sources.length > 60 ? `<li class="src">…and ${n.sources.length - 60} more</li>` : ''}</ul>`;
+  box.hidden = false; box.scrollTop = 0;
+}
+$('readerBody').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.id) select(byId.get(b.dataset.id), true);
+  else if (b.dataset.d) { S.focusDepth = +b.dataset.d; persist(); select(selected); }
+  else if (b.id === 'copyPath') copyText(selected.id, 'Path copied');
+});
+$('closeReader').addEventListener('click', () => select(null));
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.activeElement !== $('search')) select(null); });
+
+// ---------- search ----------
+const search = $('search'), sug = $('suggest'); let sugItems = [], sugIdx = 0;
+function renderSuggest() {
+  const q = search.value.trim().toLowerCase();
+  if (!q) { sug.hidden = true; return; }
+  sugItems = nodes.filter(n => n.title.toLowerCase().includes(q) || n.id.toLowerCase().includes(q))
+    .sort((a, b) => (a.title.toLowerCase().indexOf(q) - b.title.toLowerCase().indexOf(q)) || b.nAll - a.nAll).slice(0, 12);
+  sugIdx = 0;
+  sug.innerHTML = sugItems.map((n, i) => `<li role="option" data-i="${i}" aria-selected="${i === 0}">${dotHtml(n)}${escapeHtml(n.title)}</li>`).join('') || '<li>No page matches</li>';
+  sug.hidden = false;
+}
+search.addEventListener('input', renderSuggest);
+search.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); sugIdx = (sugIdx + (e.key === 'ArrowDown' ? 1 : -1) + sugItems.length) % Math.max(1, sugItems.length); [...sug.children].forEach((li, i) => li.setAttribute('aria-selected', i === sugIdx)); }
+  if (e.key === 'Enter' && sugItems[sugIdx]) { select(sugItems[sugIdx], true); sug.hidden = true; search.blur(); }
+  if (e.key === 'Escape') { search.value = ''; sug.hidden = true; search.blur(); }
+});
+sug.addEventListener('pointerdown', (e) => { const li = e.target.closest('li[data-i]'); if (li) { e.preventDefault(); select(sugItems[+li.dataset.i], true); sug.hidden = true; search.blur(); } });
+search.addEventListener('blur', () => setTimeout(() => { sug.hidden = true; }, 150));
+
+// ---------- toast, clipboard, modal ----------
+let toastT; function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, 2200); }
+function copyText(text, okMsg) {
+  const fallback = () => openModal('Copy this text', 'Your browser blocked the clipboard. Select all of the text below and copy it.', text, null);
+  try { navigator.clipboard.writeText(text).then(() => toast(okMsg), fallback); } catch { fallback(); }
+}
+let modalCb = null;
+function openModal(title, text, value, cb) {
+  $('modalTitle').textContent = title; $('modalText').textContent = text; $('modalArea').value = value || '';
+  $('modalOk').textContent = cb ? 'Apply' : 'Done'; modalCb = cb; $('modal').hidden = false; $('modalArea').focus(); $('modalArea').select();
+}
+$('modalOk').addEventListener('click', () => { const cb = modalCb; $('modal').hidden = true; if (cb) cb($('modalArea').value); });
+$('modalCancel').addEventListener('click', () => { $('modal').hidden = true; });
+
+// ---------- dials (lil-gui) ----------
+function persist() { store.set('orrery.current', S); store.set('orrery.hiddenCats', [...hiddenCats]); }
+const all = () => { applyMood(); applyNodes(); applyLinks(); buildSatellites(); renderReader(); persist(); };
+const nodesCh = () => { applyNodes(); applyLinks(); buildSatellites(); renderReader(); persist(); };
+const linksCh = () => { applyLinks(); persist(); };
+const moodCh = () => { applyMood(); persist(); };
+const layoutCh = () => { applyLayout(); persist(); };
+const satCh = () => { buildSatellites(); renderReader(); persist(); };
+
+const gui = new lil.GUI({ title: 'Dials' });
+const fLooks = gui.addFolder('Looks');
+const looksUi = { preset: 'Nebula', name: 'My look', savedLook: '' };
+fLooks.add(looksUi, 'preset', Object.keys(PRESETS)).name('Start from preset').onChange(v => {
+  S = { ...DEFAULTS, ...PRESETS[v] }; S.catColors = catColorDefaults(S.palette); refreshGui(); applyLayout(); all(); toast(`Preset: ${v}`);
+});
+fLooks.add(looksUi, 'name').name('Name this look');
+fLooks.add({ save() { const looks = store.get('orrery.looks', {}); looks[looksUi.name] = S; if (store.set('orrery.looks', looks)) { refreshSaved(); toast(`Saved “${looksUi.name}”`); } else toast('This browser blocked saving'); } }, 'save').name('Save look');
+let savedCtl = null;
+function refreshSaved() {
+  const names = Object.keys(store.get('orrery.looks', {}));
+  if (savedCtl) savedCtl.destroy();
+  savedCtl = fLooks.add(looksUi, 'savedLook', ['', ...names]).name('Load saved look').onChange(nm => {
+    const l = store.get('orrery.looks', {})[nm]; if (!l) return;
+    S = { ...DEFAULTS, ...l, catColors: { ...catColorDefaults(DEFAULTS.palette), ...(l.catColors || {}) } }; refreshGui(); applyLayout(); all(); toast(`Loaded “${nm}”`);
+  });
+}
+fLooks.add({ copy() { copyText(JSON.stringify(S), 'Look copied. Paste it to Claude to make it the default.'); } }, 'copy').name('Copy look as text');
+fLooks.add({ paste() { openModal('Paste a look', 'Paste look text you copied earlier, then press Apply.', '', (txt) => {
+  try { const l = JSON.parse(txt); S = { ...DEFAULTS, ...l, catColors: { ...S.catColors, ...(l.catColors || {}) } }; refreshGui(); applyLayout(); all(); toast('Look applied'); }
+  catch { toast('That text is not a look. Copy it again with “Copy look as text”.'); }
+}); } }, 'paste').name('Paste a look');
+fLooks.add({ reset() { S = { ...DEFAULTS, catColors: catColorDefaults(DEFAULTS.palette) }; refreshGui(); applyLayout(); all(); toast('Back to the default look'); } }, 'reset').name('Reset to default');
+
+const fN = gui.addFolder('Pages (nodes)');
+fN.add(S, 'shape', Object.keys(GEOS)).name('Shape').onChange(nodesCh);
+fN.add(S, 'material', ['Glossy', 'Matte', 'Glow', 'Wireframe']).name('Material').onChange(nodesCh);
+fN.add(S, 'sizeBy', ['Links (all)', 'Linked from', 'Sources', 'Page length', 'Flat']).name('Size by').onChange(nodesCh);
+fN.add(S, 'sizeScale', 0.2, 4, 0.05).name('Overall size').onChange(nodesCh);
+fN.add(S, 'sizeMin', 0.5, 15, 0.5).name('Smallest').onChange(nodesCh);
+fN.add(S, 'sizeMax', 2, 40, 0.5).name('Largest').onChange(nodesCh);
+fN.add(S, 'nodeOpacity', 0.1, 1, 0.05).name('Opacity').onChange(nodesCh);
+fN.add(S, 'nodeGlow').name('Glow halo').onChange(nodesCh);
+fN.add(S, 'glowSize', 1, 10, 0.1).name('Halo size').onChange(nodesCh);
+fN.add(S, 'glowStrength', 0, 1, 0.01).name('Halo strength').onChange(nodesCh);
+fN.add(S, 'hubsShine').name('Hubs shine brighter').onChange(nodesCh);
+fN.add(S, 'healthRings').name('Ring pages with problems').onChange(nodesCh);
+
+const fC = gui.addFolder('Colour');
+fC.add(S, 'colorBy', ['Category', 'Cluster', 'Domain', 'Recency']).name('Colour by').onChange(nodesCh);
+fC.add(S, 'palette', Object.keys(PALETTES)).name('Palette').onChange(v => { S.catColors = catColorDefaults(v); refreshGui(); nodesCh(); });
+fC.addColor(S, 'recentColor').name('Recency: new').onChange(nodesCh);
+fC.addColor(S, 'oldColor').name('Recency: old').onChange(nodesCh);
+fC.add(S, 'recencyDays', 7, 180, 1).name('Recency: days to fade').onChange(nodesCh);
+const fCat = fC.addFolder('Category colours'); fCat.close();
+let catCtls = [];
+function buildCatCtls() {
+  catCtls.forEach(c => c.destroy()); catCtls = [];
+  for (const c of catsByCount) {
+    const n = nodes.filter(x => x.cat === c).length;
+    catCtls.push(fCat.addColor(S.catColors, c).name(`${c} (${n})`).onChange(nodesCh));
+  }
+}
+const fShow = gui.addFolder('Show categories'); fShow.close();
+const showObj = Object.fromEntries(catsByCount.map(c => [c, !hiddenCats.has(c)]));
+for (const c of catsByCount) fShow.add(showObj, c).onChange(v => { v ? hiddenCats.delete(c) : hiddenCats.add(c); Graph.nodeVisibility(isVisibleNode); applyLinks(); persist(); });
+
+const fL = gui.addFolder('Labels');
+fL.add(S, 'labels', ['Off', 'Focus only', 'Hubs + focus', 'All']).name('Show labels').onChange(nodesCh);
+fL.add(S, 'labelTop', 0, 120, 1).name('How many hubs').onChange(nodesCh);
+fL.add(S, 'labelSize', 0.5, 3, 0.05).name('Label size').onChange(nodesCh);
+fL.addColor(S, 'labelColor').name('Label colour').onChange(() => { nodesCh(); });
+
+const fK = gui.addFolder('Links');
+fK.add(S, 'linkVisibility', ['All', 'Focus only']).name('Show links').onChange(linksCh);
+fK.add(S, 'linkWidth', 0, 3, 0.05).name('Width (0 = hairline)').onChange(linksCh);
+fK.add(S, 'linkOpacity', 0.02, 1, 0.01).name('Opacity').onChange(linksCh);
+fK.add(S, 'linkColorMode', ['Source colour', 'Fixed']).name('Colour').onChange(linksCh);
+fK.addColor(S, 'linkColor').name('Fixed colour').onChange(linksCh);
+fK.add(S, 'linkCurve', 0, 1, 0.01).name('Curve').onChange(linksCh);
+fK.add(S, 'linkArrows').name('Direction arrows').onChange(linksCh);
+fK.add(S, 'particles', ['Off', 'Focus only', 'All']).name('Flowing particles').onChange(linksCh);
+fK.add(S, 'particleCount', 1, 8, 1).name('Particles per link').onChange(linksCh);
+fK.add(S, 'particleSpeed', 0.001, 0.03, 0.001).name('Particle speed').onChange(linksCh);
+fK.add(S, 'particleSize', 0.3, 5, 0.1).name('Particle size').onChange(linksCh);
+
+const fM = gui.addFolder('Mood');
+fM.addColor(S, 'background').name('Background').onChange(moodCh);
+fM.add(S, 'bloom', 0, 3, 0.05).name('Bloom').onChange(moodCh);
+fM.add(S, 'bloomRadius', 0, 1.5, 0.01).name('Bloom spread').onChange(moodCh);
+fM.add(S, 'bloomThreshold', 0, 1, 0.01).name('Bloom threshold').onChange(moodCh);
+fM.add(S, 'fog', 0, 0.004, 0.0001).name('Depth fog').onChange(moodCh);
+fM.add(S, 'stars').name('Starfield').onChange(moodCh);
+fM.add(S, 'starCount', 200, 8000, 100).name('Stars').onChange(moodCh);
+fM.add(S, 'starSize', 0.5, 4, 0.1).name('Star size').onChange(moodCh);
+fM.add(S, 'ambient', 0, 6, 0.05).name('Light').onChange(moodCh);
+fM.add(S, 'autoRotate').name('Slow spin').onChange(moodCh);
+fM.add(S, 'rotateSpeed', 0.05, 3, 0.05).name('Spin speed').onChange(moodCh);
+
+const fY = gui.addFolder('Layout'); fY.close();
+fY.add(S, 'layout', ['Force', 'Galaxy (fixed)']).name('Layout').onChange(layoutCh);
+fY.add(S, 'charge', -400, 0, 5).name('Push apart').onChange(layoutCh);
+fY.add(S, 'linkDistance', 5, 200, 1).name('Link length').onChange(layoutCh);
+fY.add(S, 'clusterPull', 0, 2, 0.05).name('Cluster pull').onChange(layoutCh);
+fY.add(S, 'centerPull', 0, 0.2, 0.005).name('Pull to centre').onChange(layoutCh);
+fY.add(S, 'galaxySpread', 0.3, 3, 0.05).name('Galaxy spread').onChange(layoutCh);
+fY.add({ go() { applyLayout(); } }, 'go').name('Re-run layout');
+
+const fF = gui.addFolder('Focus & camera'); fF.close();
+fF.add(S, 'focusDepth', 1, 3, 1).name('Neighbour hops').onChange(() => { persist(); if (selected) select(selected); });
+fF.add(S, 'dimOthers', 0, 1, 0.01).name('Dim the rest').onChange(() => { persist(); if (selected) select(selected); });
+fF.add(S, 'flyDistance', 20, 400, 5).name('Fly-to distance').onChange(persist);
+fF.add(S, 'flyMs', 0, 4000, 50).name('Fly-to time (ms)').onChange(persist);
+fF.add({ fit() { Graph.zoomToFit(800, 40); } }, 'fit').name('Zoom to fit all');
+
+const fS = gui.addFolder('Satellites (sources)');
+fS.add(S, 'satellites').name('Show on selected page').onChange(satCh);
+fS.add(S, 'satSize', 0.3, 8, 0.1).name('Satellite size').onChange(satCh);
+fS.add(S, 'satOrbit', 0.3, 4, 0.05).name('Orbit distance').onChange(satCh);
+fS.add(S, 'satSpin', 0, 2, 0.01).name('Spin').onChange(persist);
+fS.addColor(S, 'satRaw').name('Raw source colour').onChange(satCh);
+fS.addColor(S, 'satExt').name('External source colour').onChange(satCh);
+fS.add(S, 'satLabels').name('Name each satellite').onChange(satCh);
+
+function rebind(folderList) {
+  // lil-gui controllers hold a reference to the object they were made with; point them at the new S
+  for (const c of gui.controllersRecursive()) {
+    if (c.object === showObj || c.object === looksUi || typeof c.object[c.property] === 'function') continue;
+    if (c.parent === fCat) continue;
+    if (c.property in S) { c.object = S; c.updateDisplay(); }
+  }
+}
+function refreshGui() { rebind(); buildCatCtls(); }
+buildCatCtls(); refreshSaved();
+[fC, fL, fK, fM].forEach(f => f.close());
+if (innerWidth < 640) gui.close();
+
+// ---------- boot ----------
+Graph.graphData({ nodes, links });
+applyMood(); applyLayout(false); applyNodes(); applyLinks();
+Graph.cameraPosition({ x: 0, y: 120, z: 900 }, { x: 0, y: 0, z: 0 }, 0);
+setTimeout(() => Graph.zoomToFit(1200, 60), 2600);
+addEventListener('resize', () => { Graph.width(innerWidth).height(innerHeight); bloom.setSize(innerWidth, innerHeight); });
+Graph.width(innerWidth).height(innerHeight);
+$('loading').remove();
+window.__orrery = { Graph, get S() { return S; }, nodes, select, byId, gui, PRESETS };
+</script>
